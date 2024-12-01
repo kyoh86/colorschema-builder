@@ -32,9 +32,30 @@ const updateContrastRatio = (): void => {
 		palette[selectedForeground],
 		palette[selectedBackground],
 	).toFixed(2);
+
+	contrastLog =
+		(Math.log2(Number.parseFloat(contrastRatio)) / Math.log2(maxContrast)) *
+		100;
 };
 
+const maxContrast = 21;
+let contrastLog = 0;
+
 updateContrastRatio();
+
+const getBarColor = (ratio: number): string => {
+	if (ratio >= 7) return "green";
+	if (ratio >= 4.5) return "yellowgreen";
+	if (ratio >= 3) return "orange";
+	return "red";
+};
+
+const getContrastLabel = (ratio: number): string => {
+	if (ratio >= 7) return "Good";
+	if (ratio >= 4.5) return "Not Bad";
+	if (ratio >= 3) return "Readable";
+	return "Low Contrast";
+};
 
 const saveHighlight = (name: string): void => {
 	if (name.trim() === "") {
@@ -78,25 +99,11 @@ const deleteHighlight = (id: string): void => {
 
 <div>
   <h1>Customizable Palette Tester</h1>
-
   <h2 class="text-xl text-bold mt-4">Edit Palette</h2>
   <div class="flex flex-col gap-4">
     <div class="palette-table">
       {#each Object.keys(palette) as colorName (colorName)}
         <label class="text-right" for="palette-{colorName}">{colorName}:</label>
-        <div>
-          <ColorPicker
-            label="Pick a color"
-            name="palette-{colorName}"
-            hex={palette[colorName as PaletteKey]}
-            on:input={({ detail }) => {
-              if (detail.hex) {
-                palette[colorName as PaletteKey] = detail.hex;
-                updateContrastRatio();
-              }
-            }}
-          />
-        </div>
         <div>
           <label>
             <input
@@ -119,12 +126,24 @@ const deleteHighlight = (id: string): void => {
             Background
           </label>
         </div>
+        <div>
+          <ColorPicker
+            label="Pick a color"
+            name="palette-{colorName}"
+            hex={palette[colorName as PaletteKey]}
+            on:input={({ detail }) => {
+              if (detail.hex) {
+                palette[colorName as PaletteKey] = detail.hex;
+                updateContrastRatio();
+              }
+            }}
+          />
+        </div>
       {/each}
     </div>
 
     <h2 class="text-xl text-bold mt-4">Edit Highlight</h2>
     <div class="highlight-table">
-      <div>Preview:</div>
       <div
         class="preview-box"
         style="background-color: {palette[selectedBackground]}; color: {palette[
@@ -133,32 +152,36 @@ const deleteHighlight = (id: string): void => {
       >
         Sample Text
       </div>
-      <div>Contrast:</div>
-      <div style="display: flex; align-items: center; gap: 1rem;">
-          <div>{contrastRatio}</div>
-          <div
-              style="
-                  width: 100px;
-                  height: 10px;
-                  background-color: {parseFloat(contrastRatio) >= 4.5 ? 'green' : parseFloat(contrastRatio) >= 3 ? 'yellow' : 'red'};
-              "
-          ></div>
-      </div>
-      <label for="highlight-name">Name:</label>
       <div>
-        <input
-          type="text"
-          name="highlight-name"
-          placeholder="Highlight name"
-          bind:value={highlightName}
-        />
-        <button on:click={() => saveHighlight(highlightName)}>
-          {editingHighlight ? "Update Highlight" : "Save Highlight"}
-        </button>
+        <div>Contrast Ratio: {contrastRatio} - {getContrastLabel(parseFloat(contrastRatio))}</div>
+        <div class="contrast-container">
+          <!-- コントラスト比の視覚的表現 -->
+          <div class="contrast-bar">
+            <div class="contrast-bar-fill"
+              style="
+                        width: {contrastLog}%;
+                        background-color: {getBarColor(parseFloat(contrastRatio))};">
+            </div>
+          </div>
+          <span class="contrast-label contrast-label-readable">Readable</span>
+          <span class="contrast-label contrast-label-notbad">Not Bad</span>
+          <span class="contrast-label contrast-label-good">Good</span>
+        </div>
       </div>
     </div>
 
-    <div></div>
+    <div>
+      <label for="highlight-name">Name:</label>
+      <input
+        type="text"
+        name="highlight-name"
+        placeholder="Highlight name"
+        bind:value={highlightName}
+      />
+      <button on:click={() => saveHighlight(highlightName)}>
+        {editingHighlight ? "Update Highlight" : "Save Highlight"}
+      </button>
+    </div>
 
     <h2 class="text-xl text-bold mt-4">Saved Highlights</h2>
     <div>
@@ -186,11 +209,12 @@ const deleteHighlight = (id: string): void => {
   .palette-table {
     display: grid;
     grid-template-columns: minmax(0, auto) minmax(0, auto) 1fr;
-    column-gap: 10px;
+    column-gap: 5px;
     row-gap: 5px;
     align-items: center;
     width: fit-content;
   }
+
   .preview-box {
     padding: 1rem 2rem;
     width: fit-content;
@@ -199,17 +223,51 @@ const deleteHighlight = (id: string): void => {
     justify-content: center;
     border: 1px solid #ccc;
   }
+
   .highlight-table {
     display: grid;
-    column-gap: 10px;
-    row-gap: 5px;
-    grid-template-columns: minmax(0, auto) minmax(0, auto);
-    width: fit-content;
-    align-items: center;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    column-gap: 20px;
   }
-  .highlight-item {
-    display: flex;
-    gap: 1rem;
-    align-items: center;
+
+  .contrast-container {
+    display: grid;
+    grid-template-columns: repeat(100, 1fr);
+  }
+
+  .contrast-bar {
+    grid-row: 1;
+    grid-column: 1 / 101;
+    width: 100%;
+    height: 20px;
+    background-color: #ddd;
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .contrast-bar-fill {
+    height: 100%;
+    width: 0;
+    background-color: green;
+    transition:
+      width 0.5s,
+      background-color 0.5s;
+  }
+
+  .contrast-label {
+    text-align: left;
+    border-left: 1px dashed #666;
+    padding-left: 2px;
+  }
+
+  .contrast-label-readable {
+    grid-column: 36 / 49;
+  }
+  .contrast-label-notbad {
+    grid-column: 49 / 64;
+  }
+  .contrast-label-good {
+    grid-column: 64 / 100;
   }
 </style>
