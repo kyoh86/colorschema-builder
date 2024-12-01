@@ -1,97 +1,180 @@
 <script lang="ts">
-    import ColorPicker  from "svelte-awesome-color-picker";
+import ColorPicker from "svelte-awesome-color-picker";
+import { ulid } from "ulidx";
+import {
+	type Palette,
+	type PaletteKey,
+	defaultPalette,
+	getContrastRatio,
+} from "../lib/color";
 
-    let backgroundColor = "#000000";
-    let foregroundColor = "#ffffff";
+interface Highlight {
+	id: string;
+	name: string;
+	foreground: PaletteKey;
+	background: PaletteKey;
+}
 
-    let contrastRatio: string = "";
+let highlightName = "";
 
-    // 色の相対輝度を計算
-    function getLuminance(color: string): number {
-        const r = parseInt(color.slice(1, 3), 16) / 255;
-        const g = parseInt(color.slice(3, 5), 16) / 255;
-        const b = parseInt(color.slice(5, 7), 16) / 255;
+const palette: Palette = { ...defaultPalette };
 
-        const [R, G, B] = [r, g, b].map((v) =>
-            v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
-        );
+// 現在選択中の前景色と背景色
+let selectedForeground: PaletteKey = "White";
+let selectedBackground: PaletteKey = "Black";
+let contrastRatio = "";
 
-        return 0.2126 * R + 0.7152 * G + 0.0722 * B;
-    }
+let highlights: Highlight[] = [];
+let editingHighlight: Highlight | null = null; // 現在編集中のHighlight
 
-    // 2つの色のコントラスト比を計算
-    function getContrastRatio(color1: string, color2: string): number {
-        const luminance1 = getLuminance(color1);
-        const luminance2 = getLuminance(color2);
-        const brighter = Math.max(luminance1, luminance2);
-        const darker = Math.min(luminance1, luminance2);
+const updateContrastRatio = (): void => {
+	contrastRatio = getContrastRatio(
+		palette[selectedForeground],
+		palette[selectedBackground],
+	).toFixed(2);
+};
 
-        return (brighter + 0.05) / (darker + 0.05);
-    }
+updateContrastRatio();
 
-    // コントラスト比を更新
-    const updateContrastRatio = (): void => {
-        contrastRatio = getContrastRatio(backgroundColor, foregroundColor).toFixed(2);
-    };
+const saveHighlight = (name: string): void => {
+	if (name.trim() === "") {
+		alert("Highlight name cannot be empty!");
+		return;
+	}
 
-    // 初期コントラスト比を計算
-    updateContrastRatio();
+	if (editingHighlight) {
+		// 編集中のHighlightを更新
+		editingHighlight.name = name;
+		editingHighlight.foreground = selectedForeground;
+		editingHighlight.background = selectedBackground;
+		editingHighlight = null; // 編集モード終了
+	} else {
+		// 新しいHighlightを保存
+		highlights = [
+			...highlights,
+			{
+				id: ulid(),
+				name,
+				foreground: selectedForeground,
+				background: selectedBackground,
+			},
+		];
+	}
+
+	highlightName = ""; // 保存後にリセット
+};
+
+const editHighlight = (highlight: Highlight): void => {
+	editingHighlight = { ...highlight };
+	highlightName = highlight.name;
+	selectedForeground = highlight.foreground;
+	selectedBackground = highlight.background;
+};
+
+const deleteHighlight = (id: string): void => {
+	highlights = highlights.filter((highlight) => highlight.id !== id);
+};
 </script>
 
 <style>
     .preview-box {
         width: 100%;
-        height: 150px;
+        height: 100px;
         display: flex;
         align-items: center;
         justify-content: center;
         border: 1px solid #ccc;
         margin-top: 1rem;
     }
-    .color-pickers {
+    .palette-table {
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, auto) minmax(0, 1fr));
+      width: fit-content;
+      align-items: center;
+    }
+    .highlight-table {
+      display: grid;
+      align-items: center;
+      grid-template-columns: minmax(0, auto) minmax(0, auto);
+      width: fit-content;
+      row-gap: 1rem;
+    }
+    .highlight-item {
         display: flex;
         gap: 1rem;
-        margin-bottom: 1rem;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    .highlight-actions button {
+        margin-left: 0.5rem;
     }
 </style>
 
 <div>
-    <h1>Color Combination Tester</h1>
+    <h1>Customizable Palette Tester</h1>
 
-    <div class="color-pickers">
-        <div>
-            <label for="background">Background Color:</label>
+    <div class="palette-table">
+        {#each Object.keys(palette) as colorName (colorName)}
+                <label class="bortext-right" for="palette-{colorName}">{colorName}:</label>
+                <div class="mr-4">
+                  <ColorPicker
+                    label="Pick a color"
+                    name="palette-{colorName}"
+                    hex="{palette[colorName as PaletteKey]}"
+                    on:input="{({ detail }) => {
+                        if (detail.hex) {
+                            palette[colorName as PaletteKey] = detail.hex;
+                        }
+                    }}"
+                  />
+                </div>
+        {/each}
+    </div>
 
-            <ColorPicker
-                hex="{backgroundColor}"
-                on:input="{({detail}) => {
-                    if (!detail.hex) return;
-                    backgroundColor = detail.hex;
-                    updateContrastRatio();
-                }}"
-            />
-        </div>
-
-        <div>
-            <label for="foreground">Foreground Color:</label>
-            <ColorPicker
-                hex="{foregroundColor}"
-                on:input="{({detail}) => {
-                    if (!detail.hex) return;
-                    foregroundColor = detail.hex;
-                    updateContrastRatio();
-                }}"
-            />
-        </div>
+    <h2 class="text-xl mt-4">Create Highlight</h2>
+    <div class="highlight-table">
+        <label for="foreground">Foreground:</label>
+        <select id="foreground" bind:value={selectedForeground} on:change={updateContrastRatio}>
+            {#each Object.keys(palette) as colorName}
+                <option value={colorName as PaletteKey}>{colorName}</option>
+            {/each}
+        </select>
+        <label for="background">Background:</label>
+        <select id="background" bind:value={selectedBackground} on:change={updateContrastRatio}>
+            {#each Object.keys(palette) as colorName}
+                <option value={colorName as PaletteKey}>{colorName}</option>
+            {/each}
+        </select>
     </div>
 
     <div
         class="preview-box"
-        style="background-color: {backgroundColor}; color: {foregroundColor};"
+        style="background-color: {palette[selectedBackground]}; color: {palette[selectedForeground]};"
     >
         Sample Text
     </div>
-
     <p>Contrast Ratio: {contrastRatio}</p>
-    <p>{parseFloat(contrastRatio) >= 4.5 ? "Accessible" : parseFloat(contrastRatio)>=2.5?"Readable" : "Not Accessible"}</p>
+
+    <div>
+        <input type="text" placeholder="Highlight name" bind:value={highlightName} />
+        <button on:click={() => saveHighlight(highlightName)}>
+            {editingHighlight ? "Update Highlight" : "Save Highlight"}
+        </button>
+    </div>
+
+    <h2>Saved Highlights</h2>
+    <div>
+        {#each highlights as highlight (highlight.id)}
+            <div
+                class="highlight-item"
+                style="background-color: {palette[highlight.background]}; color: {palette[highlight.foreground]};"
+            >
+                <span>{highlight.name}</span>
+                <div class="highlight-actions">
+                    <button on:click={() => editHighlight(highlight)}>Edit</button>
+                    <button on:click={() => deleteHighlight(highlight.id)}>Delete</button>
+                </div>
+            </div>
+        {/each}
+    </div>
 </div>
